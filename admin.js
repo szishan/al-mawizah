@@ -4,14 +4,14 @@ let lang=localStorage.getItem('al-lang')==='bn'?'bn':'en', products=[], session=
 const E=(en,bn)=>lang==='bn'?bn:en;
 const status=(msg,error=false)=>{for(const el of document.querySelectorAll('#status, #editorStatus')){el.textContent=msg;el.className=error?'error':'';}};
 const uid=()=>crypto.randomUUID();
-function translate(){document.documentElement.lang=lang;document.querySelectorAll('[data-en]').forEach(el=>el.textContent=el.dataset[lang]);$('#lang').textContent=lang==='en'?'বাংলা':'English';$('#searchProducts').placeholder=E('Search name or SKU','নাম বা SKU দিয়ে খুঁজুন');$('#productCount').textContent=E(`${products.length} products`,`${products.length}টি পণ্য`);drawList();}
+function translate(){document.documentElement.lang=lang;document.querySelectorAll('[data-en]').forEach(el=>el.textContent=el.dataset[lang]);$('#lang').textContent=lang==='en'?'বাংলা':'English';$('#searchProducts').placeholder=E('Search name or SKU','নাম বা SKU দিয়ে খুঁজুন');$('#productCount').textContent=E(`${products.length} products`,`${products.length}টি পণ্য`);window.applyStoreSettings();drawList();}
 $('#lang').onclick=()=>{lang=lang==='en'?'bn':'en';localStorage.setItem('al-lang',lang);translate()};
 async function raw(path,options={},auth=true,retry=true){let headers={apikey:cfg.supabaseAnonKey,...options.headers};if(auth&&session?.access_token)headers.Authorization='Bearer '+session.access_token;let r=await fetch(cfg.supabaseUrl+path,{...options,headers}),text=await r.text(),data=null;try{data=text?JSON.parse(text):null}catch{data=text}if(r.status===401&&auth&&retry&&session?.refresh_token){await refreshSession();return raw(path,options,auth,false)}if(!r.ok){let detail=typeof data==='object'?(data.message||data.error_description||data.error||data.msg):data;throw Error(detail||`HTTP ${r.status}`)}return data}
 function storeSession(){try{sessionStorage.setItem('al-admin-session',JSON.stringify(session))}catch{}}
 async function refreshSession(){try{session=await raw('/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})},false,false);storeSession()}catch(e){session=null;sessionStorage.removeItem('al-admin-session');show(false);throw Error(E('Session expired. Sign in again.','সেশনের মেয়াদ শেষ। আবার সাইন ইন করুন।'))}}
-function show(on){$('#login').hidden=on;$('#studio').hidden=!on;$('#logout').hidden=!on}
+function show(on){$('#login').hidden=on;$('#studio').hidden=!on;$('#logout').hidden=!on;if(on)loadStoreSettings()}
 $('#login').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{let f=new FormData(e.target);session=await raw('/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.get('email'),password:f.get('password')})},false);if(!await raw('/rest/v1/rpc/is_admin',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}))throw Error(E('This account is not an administrator.','এই অ্যাকাউন্টটি অ্যাডমিন নয়।'));storeSession();await refresh();show(true);e.target.reset();status(E('Signed in.','সাইন ইন হয়েছে।'))}catch(err){session=null;sessionStorage.removeItem('al-admin-session');status(E('Sign in failed: ','সাইন ইন ব্যর্থ: ')+err.message,true)}finally{b.disabled=false}};
-$('#logout').onclick=()=>{session=null;sessionStorage.removeItem('al-admin-session');show(false);status(E('Signed out.','সাইন আউট হয়েছে।'))};
+$('#logout').onclick=()=>{session=null;settingsLoaded=false;sessionStorage.removeItem('al-admin-session');show(false);status(E('Signed out.','সাইন আউট হয়েছে।'))};
 const fields=[
  ['Basic information / সাধারণ তথ্য',[
   ['name_en','Product name (English) / পণ্যের নাম (ইংরেজি)','text',1],['name_bn','Product name (Bangla) / পণ্যের নাম (বাংলা)'],['brand','Brand / ব্র্যান্ড','text'],['category','Category / বিভাগ','select',['perfume','attar','perfume_oil','gift_set','decant']],['sku','SKU / ইউনিক কোড'],['barcode','Barcode / বারকোড'],['size','Size / পরিমাণ'],['concentration','Concentration / ঘনত্ব','select',['','EDP','EDT','EDC','Parfum','Extrait de Parfum','Attar','Perfume Oil']],['gender','Gender / উপযোগী','select',['','men','women','unisex']],['country_of_origin','Country of origin / উৎপত্তি'],['manufacturer','Manufacturer / প্রস্তুতকারক'],['release_year','Release year / প্রকাশের বছর','number']]],
@@ -51,4 +51,46 @@ async function upload(img){if(!img.file)return img.url;const ext={'image/jpeg':'
 async function upsert(table,rows){if(rows.length)await raw('/rest/v1/'+table+'?on_conflict=id',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rows)})}
 async function removeMissing(table,ids,current){for(const id of ids.filter(x=>!current.includes(x)))await raw('/rest/v1/'+table+'?id=eq.'+encodeURIComponent(id),{method:'DELETE'})}
 $('#editor').onsubmit=async e=>{e.preventDefault();if(saving)return;let f=e.target,v=formValues();if(!f.reportValidity())return;if(!v.name_en){field('name_en').focus();status(E('Product name is required.','পণ্যের নাম প্রয়োজন।'),true);return}if(v.price_bdt!=null&&v.sale_price_bdt!=null&&v.sale_price_bdt>v.price_bdt){status(E('Sale price cannot exceed regular price.','অফার মূল্য নিয়মিত মূল্যের বেশি হতে পারবে না।'),true);return}if(variants.some(x=>!String(x.size||'').trim())){status(E('Each variant needs a size.','প্রতিটি ভ্যারিয়েন্টে সাইজ দিন।'),true);return}saving=true;$('#saveProduct').disabled=true;let id=field('id').value||pendingId||uid();pendingId=id;let already=!!field('id').value;try{status(E('Saving product…','পণ্য সংরক্ষণ করা হচ্ছে…'));for(const img of gallery)await upload(img);let cost=v.cost_bdt;delete v.cost_bdt;v.image_url=gallery[0]?.url||null;v.published=v.product_status==='published';v.in_stock=v.stock_status==='in_stock';if(already){await raw('/rest/v1/products?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(v)})}else{await raw('/rest/v1/products?on_conflict=id',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({...v,id})});field('id').value=id}let imageRows=gallery.map((x,i)=>({id:x.id,product_id:id,url:x.url,alt_text:x.alt_text||'',position:i}));await upsert('product_images',imageRows);await removeMissing('product_images',originalImageIds,imageRows.map(x=>x.id));originalImageIds=imageRows.map(x=>x.id);let variantRows=variants.map((x,i)=>({id:x.id,product_id:id,size:String(x.size).trim(),sku:x.sku||null,price_bdt:x.price_bdt===''||x.price_bdt==null?null:Number(x.price_bdt),sale_price_bdt:x.sale_price_bdt===''||x.sale_price_bdt==null?null:Number(x.sale_price_bdt),stock_quantity:x.stock_quantity===''||x.stock_quantity==null?null:Number(x.stock_quantity),stock_status:x.stock_status||'out_of_stock',position:i}));await upsert('product_variants',variantRows);await removeMissing('product_variants',originalVariantIds,variantRows.map(x=>x.id));originalVariantIds=variantRows.map(x=>x.id);await raw('/rest/v1/product_private?on_conflict=product_id',{method:'POST',headers:{'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({product_id:id,cost_bdt:cost})});pendingId=null;await refresh();status(E('Product saved successfully.','পণ্য সফলভাবে সংরক্ষণ হয়েছে।'))}catch(err){status(E('Save incomplete: ','সংরক্ষণ সম্পূর্ণ হয়নি: ')+err.message+E(' Check the form and retry; if the product was created, retry updates it.',' তথ্য যাচাই করে আবার চেষ্টা করুন; পণ্য তৈরি হয়ে থাকলে পুনরায় চাপলে সেটিই হালনাগাদ হবে।'),true)}finally{saving=false;$('#saveProduct').disabled=false}};
+const settingKeys=['store_name','store_name_bn','phone','whatsapp_number','email','address','facebook_url','instagram_url','logo_url','hero_title_en','hero_title_bn','hero_text_en','hero_text_bn','story_title_en','story_title_bn','story_text_en','story_text_bn','tagline_en','tagline_bn','delivery_note_en','delivery_note_bn'];
+let settingsLoaded=false;
+async function loadStoreSettings(){
+  if(settingsLoaded)return;
+  const save=$('#saveSettings'), message=$('#settingsStatus');
+  save.disabled=true;
+  try{
+    const rows=await raw('/rest/v1/store_settings?id=eq.1&select=*');
+    if(!Array.isArray(rows)||!rows[0])throw Error(E('Store settings are not set up.','দোকানের সেটিংস এখনও প্রস্তুত নয়।'));
+    for(const key of settingKeys)$('#storeSettings').elements.namedItem(key).value=rows[0][key]??'';
+    settingsLoaded=true;save.disabled=false;message.textContent='';message.className='';
+  }catch(err){message.textContent=E('Could not load settings: ','সেটিংস পাওয়া যায়নি: ')+err.message;message.className='error';}
+}
+$('#storeSettings').onsubmit=async e=>{
+  e.preventDefault();
+  if(!settingsLoaded||!e.target.reportValidity())return;
+  const button=$('#saveSettings'),message=$('#settingsStatus');button.disabled=true;message.className='';
+  try{
+    const values={};
+    for(const key of settingKeys)values[key]=e.target.elements.namedItem(key).value.trim();
+    for(const key of ['facebook_url','instagram_url'])if(values[key]){
+      const u=new URL(values[key]);
+      if(u.protocol!=='https:'||u.username||u.password)throw Error(E('Social links must start with https://.','সামাজিক মাধ্যমের লিংক https:// দিয়ে শুরু হতে হবে।'));
+    }
+    if(!/^assets\/[a-zA-Z0-9._\/-]+$/.test(values.logo_url)){
+      const u=new URL(values.logo_url);
+      if(u.protocol!=='https:'||u.username||u.password)throw Error(E('Logo URL must use https://.','লোগোর লিংকে https:// ব্যবহার করুন।'));
+    }
+    const file=$('#settingsLogo').files[0];
+    if(file){
+      if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024)throw Error(E('Logo must be JPG, PNG or WebP, up to 5 MB.','লোগো JPG, PNG বা WebP এবং সর্বোচ্চ ৫ MB হতে হবে।'));
+      message.textContent=E('Uploading logo…','লোগো আপলোড হচ্ছে…');
+      values.logo_url=await upload({file});
+    }
+    message.textContent=E('Saving settings…','সেটিংস সংরক্ষণ হচ্ছে…');
+    const rows=await raw('/rest/v1/store_settings?id=eq.1',{method:'PATCH',headers:{'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(values)});
+    if(!Array.isArray(rows)||rows.length!==1)throw Error(E('Settings were not saved. Check administrator access.','সেটিংস সংরক্ষিত হয়নি। অ্যাডমিন অনুমতি যাচাই করুন।'));
+    window.AL_STORE={...window.AL_STORE,...rows[0]};window.applyStoreSettings();
+    e.target.elements.namedItem('logo_url').value=rows[0].logo_url;$('#settingsLogo').value='';
+    message.textContent=E('Settings saved successfully.','সেটিংস সফলভাবে সংরক্ষিত হয়েছে।');
+  }catch(err){message.className='error';message.textContent=E('Could not save settings: ','সেটিংস সংরক্ষণ হয়নি: ')+err.message;}finally{button.disabled=false;}
+};
 (async()=>{try{session=JSON.parse(sessionStorage.getItem('al-admin-session')||'null');if(session?.access_token){await refresh();show(true);status(E('Signed in.','সাইন ইন হয়েছে।'))}else show(false)}catch(e){show(false);status(E('Please sign in: ','সাইন ইন করুন: ')+e.message,true)}translate()})();

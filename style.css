@@ -28,3 +28,6 @@ html[data-theme="light"] .image-placeholder { background:#e8e4dd; }
 
 /* Original Al Mawizah logo, supplied by the owner. */
 .brand-lockup{display:inline-flex;align-items:center;gap:.8rem;line-height:1.15}.brand-logo{display:block;width:76px;height:76px;object-fit:contain;flex:none;border-radius:3px}.story-logo{display:block;width:min(240px,60vw);height:auto;margin:0 auto 1.75rem;border-radius:4px}@media(max-width:700px){.brand-logo{width:62px;height:62px}.brand-lockup{font-size:19px;letter-spacing:.12em}}
+
+.social-links{display:flex;flex-wrap:wrap;gap:.9rem}.social-links a:not(.brand){display:inline-block}.social-links a:hover{text-decoration:underline}[data-store-address]{white-space:pre-line}
+.social-links [hidden],[data-store-address][hidden],[data-store-whatsapp][hidden]{display:none!important}

@@ -21,6 +21,7 @@ function translate() {
   ['all','perfume','attar','perfume_oil','gift_set','decant'].forEach(value => { const option=$('#category option[value="'+value+'"]'); if(option) option.textContent = t()[value] || option.textContent; });
   $('#cartButton').firstChild.textContent = t().bag + ' ';
   $('#cart .close').setAttribute('aria-label', t().close);
+  window.applyStoreSettings();
   render();
 }
 $('#lang').onclick = () => { lang = lang === 'en' ? 'bn' : 'en'; try { localStorage.setItem('al-lang',lang); } catch (_) {} translate(); };
@@ -45,12 +46,12 @@ function render() {
   $('#catalog').innerHTML = matches.map(p => {
     const name = lang === 'bn' && p.name_bn ? p.name_bn : p.name_en;
     const details = [p.name_en, p.size].filter(Boolean).join(' — ');
-    const whatsapp = 'https://wa.me/8801577350488?text=' + encodeURIComponent(t().askMessage + ' ' + details);
+    const whatsapp = 'https://wa.me/' + window.AL_STORE.whatsapp_number + '?text=' + encodeURIComponent(t().askMessage + ' ' + details);
     const description = (lang==='bn'&&p.description_bn?p.description_bn:p.description_en||'').replace(/\*\*/g, '');
     const detailUrl = 'product.html?id=' + encodeURIComponent(p.id);
     const hasVariants = variants.some(v=>v.product_id===p.id);
     const amount = currentPrice(p);
-    return `<article class="card"><a href="${esc(detailUrl)}">${p.image_url?`<img src="${esc(p.image_url)}" alt="${esc(name)}" loading="lazy">`:'<div class="image-placeholder" aria-hidden="true"></div>'}</a><p class="eyebrow">${esc(t()[p.category] || p.category)} ${p.size?'/ '+esc(p.size):''}</p><h3><a href="${esc(detailUrl)}">${esc(name)}</a></h3><p class="product-price">${amount!=null?price(amount):t().contactPrice}</p><a class="outline" href="${esc(detailUrl)}">${t().details}</a>${!hasVariants&&amount!=null&&p.in_stock?`<button class="gold-button" data-add="${esc(p.id)}">${t().add}</button>`:!hasVariants&&amount==null?`<a class="outline" href="${esc(whatsapp)}">${t().ask}</a>`:''}</article>`;
+    return `<article class="card"><a href="${esc(detailUrl)}">${p.image_url?`<img src="${esc(p.image_url)}" alt="${esc(name)}" loading="lazy">`:'<div class="image-placeholder" aria-hidden="true"></div>'}</a><p class="eyebrow">${esc(t()[p.category] || p.category)} ${p.size?'/ '+esc(p.size):''}</p><h3><a href="${esc(detailUrl)}">${esc(name)}</a></h3><p class="product-price">${amount!=null?price(amount):t().contactPrice}</p><a class="outline" href="${esc(detailUrl)}">${t().details}</a>${!hasVariants&&amount!=null&&p.in_stock?`<button class="gold-button" data-add="${esc(p.id)}">${t().add}</button>`:!hasVariants&&amount==null&&window.AL_STORE_READY?`<a class="outline" href="${esc(whatsapp)}">${t().ask}</a>`:''}</article>`;
   }).join('');
   let message = '';
   if (status !== 'ready') message = t()[status];
@@ -91,12 +92,14 @@ $('#category').onchange = render;
 $('#cartButton').onclick = () => $('#cart').showModal();
 $('#checkout').onsubmit = e => {
   e.preventDefault();
+  if (!window.AL_STORE_READY) { alert(lang==='bn'?'দোকানের যোগাযোগ তথ্য লোড হয়নি। আবার চেষ্টা করুন।':'Store contact details could not be loaded. Please try again.'); return; }
   const items = cartLines();
   if (!items.length) { alert(t().addFirst); return; }
   const f = new FormData(e.target);
-  const message = ['Al Mawizah COD order',...items.map(({p,item,qty,amount}) => `${p.name_en}${item.size?' — '+item.size:''} × ${qty} = ${price(amount*qty)}`),'Subtotal: '+price(items.reduce((n,line) => n + line.amount*line.qty,0)),'Delivery charge to be confirmed','Name: '+f.get('name'),'Phone: '+f.get('phone'),'Address: '+f.get('address')].join('\n');
-  window.open('https://wa.me/8801577350488?text='+encodeURIComponent(message),'_blank','noopener');
+  const message = [window.AL_STORE.store_name+' COD order',...items.map(({p,item,qty,amount}) => `${p.name_en}${item.size?' — '+item.size:''} × ${qty} = ${price(amount*qty)}`),'Subtotal: '+price(items.reduce((n,line) => n + line.amount*line.qty,0)),window.AL_STORE.delivery_note_en,'Name: '+f.get('name'),'Phone: '+f.get('phone'),'Address: '+f.get('address')].join('\n');
+  window.open('https://wa.me/'+window.AL_STORE.whatsapp_number+'?text='+encodeURIComponent(message),'_blank','noopener');
 };
+document.addEventListener('store-settings-updated', () => render());
 translate();
 load();
 if (new URLSearchParams(location.search).get('checkout')==='1') $('#cart').showModal();
